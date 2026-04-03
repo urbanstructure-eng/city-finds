@@ -1,0 +1,8 @@
+{
+  "name": "Foundly",
+  "description": "A community-driven urban lost and found platform for everything from cars to keys. Post found items, search for lost belongings, and leverage AI-powered viral videos to reunite owners with their items.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
