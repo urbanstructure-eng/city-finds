@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search, 
   Plus, 
@@ -108,9 +108,65 @@ function handleFirestoreError(error: any, operationType: OperationType, path: st
 }
 
 // AI Service
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let ai: GoogleGenAI | null = null;
+try {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (apiKey) {
+    ai = new GoogleGenAI({ apiKey });
+  }
+} catch (e) {
+  console.error("Failed to initialize AI service:", e);
+}
+
+// Error Boundary Component
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+          <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-xl border border-red-100">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-6">
+              <AlertCircle className="w-8 h-8 text-red-500" />
+            </div>
+            <h1 className="text-2xl font-black text-gray-900 mb-4">Something went wrong</h1>
+            <p className="text-gray-600 mb-6 font-medium">
+              The application encountered an unexpected error. Please try refreshing the page.
+            </p>
+            <div className="bg-red-50 rounded-2xl p-4 mb-6 overflow-auto max-h-40">
+              <code className="text-xs text-red-700 whitespace-pre-wrap">
+                {this.state.error?.message || String(this.state.error)}
+              </code>
+            </div>
+            <button 
+              onClick={() => window.location.reload()}
+              className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold hover:bg-gray-800 transition-colors"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 export default function App() {
+  console.log("Foundly App Mounting...");
   const [user, loadingAuth] = useAuthState(auth);
   const [items, setItems] = useState<FoundItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
@@ -472,6 +528,11 @@ export default function App() {
       
       IMPORTANT: Please respond in ${userSettings.language}.`;
 
+      if (!ai) {
+        setAiResponse("AI service is not configured. Please set the GEMINI_API_KEY environment variable.");
+        return;
+      }
+
       const result = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
@@ -746,7 +807,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans selection:bg-blue-100">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gray-50 text-gray-900 font-sans selection:bg-blue-100">
       {/* Header */}
       <header className={cn(
         "fixed top-0 z-40 w-full transition-all duration-300",
@@ -2307,5 +2369,6 @@ export default function App() {
         </div>
       </footer>
     </div>
-  );
+  </ErrorBoundary>
+);
 }
