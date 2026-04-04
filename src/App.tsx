@@ -178,6 +178,13 @@ export default function App() {
   const [selectedItemForMap, setSelectedItemForMap] = useState<FoundItem | null>(null);
   const [selectedItemForDetail, setSelectedItemForDetail] = useState<FoundItem | null>(null);
   const [heroCity, setHeroCity] = useState<{ name: string, video: string, image: string } | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.play().catch(e => console.error("Manual play failed:", e));
+    }
+  }, [heroCity]);
 
   // AI State
   const [isAiOpen, setIsAiOpen] = useState(false);
@@ -417,18 +424,18 @@ export default function App() {
     const cities = [
       {
         name: 'New York',
-        video: 'https://drive.google.com/uc?id=1dz-wRhj86JqNPn0sfqyX4_Wp6q_ENxie',
+        video: 'https://drive.google.com/uc?id=1ZuEBsxQH7Ogvr7yxeWGveferfL07gnvX&export=media',
         image: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=1920&q=80'
       },
       {
         name: 'Chicago',
-        video: 'https://drive.google.com/uc?id=1dz-wRhj86JqNPn0sfqyX4_Wp6q_ENxie',
+        video: 'https://assets.mixkit.co/videos/preview/mixkit-city-traffic-at-night-in-time-lapse-3146-large.mp4',
         image: 'https://images.unsplash.com/photo-1494522855154-9297ac14b55f?auto=format&fit=crop&w=1920&q=80'
       },
       {
         name: 'Tokyo',
-        video: 'https://drive.google.com/uc?id=1dz-wRhj86JqNPn0sfqyX4_Wp6q_ENxie',
-        image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1920&q=80'
+        video: 'https://drive.google.com/uc?id=1ZuEBsxQH7Ogvr7yxeWGveferfL07gnvX&export=media',
+        image: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1920&q=80'
       }
     ];
     const randomCity = cities[Math.floor(Math.random() * cities.length)];
@@ -825,7 +832,9 @@ export default function App() {
             <h1 className={cn(
               "text-2xl font-black tracking-tighter transition-colors",
               isScrolled ? "text-gray-900" : "text-white"
-            )}>{t.appName}</h1>
+            )}>
+              {t.appName}
+            </h1>
           </div>
 
           <div className="flex items-center gap-4">
@@ -855,7 +864,7 @@ export default function App() {
                   onClick={() => setShowNotifications(!showNotifications)}
                   className={cn(
                     "p-2 rounded-xl transition-all relative",
-                    isScrolled ? "hover:bg-gray-100 text-gray-600" : "hover:bg-white/10 text-white"
+                    isScrolled ? "hover:bg-gray-100 text-gray-600" : "hover:bg-gray-100 text-gray-600"
                   )}
                 >
                   <Bell className="w-5 h-5" />
@@ -958,8 +967,8 @@ export default function App() {
             {user ? (
               <div className="flex items-center gap-3">
                 <div className="hidden sm:block text-right">
-                  <p className={cn("text-sm font-bold", isScrolled ? "text-gray-900" : "text-white")}>{user.displayName}</p>
-                  <p className={cn("text-xs", isScrolled ? "text-gray-500" : "text-white/70")}>{user.email}</p>
+                  <p className="text-sm font-bold text-gray-900">{user.displayName}</p>
+                  <p className="text-xs text-gray-500">{user.email}</p>
                 </div>
                 <button 
                   onClick={() => setIsSettingsOpen(true)}
@@ -1017,14 +1026,22 @@ export default function App() {
                 referrerPolicy="no-referrer"
               />
               <video 
+                ref={videoRef}
                 key={heroCity.video}
                 autoPlay 
                 loop 
                 muted 
                 playsInline
-                className="absolute inset-0 w-full h-full object-cover scale-105 animate-subtle-zoom opacity-100"
-                src={heroCity.video}
-              />
+                crossOrigin="anonymous"
+                preload="auto"
+                poster={heroCity.image}
+                className="absolute inset-0 w-full h-full object-cover scale-105 animate-subtle-zoom opacity-100 z-0"
+                onLoadedData={() => console.log("Video loaded successfully")}
+                onError={(e) => console.error("Video failed to load", e)}
+              >
+                <source src={heroCity.video} type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
             </>
           )}
           <div className="absolute inset-0 bg-gradient-to-b from-gray-900/70 via-gray-900/40 to-gray-50" />
