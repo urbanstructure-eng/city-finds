@@ -92,7 +92,8 @@ export const translations: Record<Language, any> = {
     aiVideoError: 'Error generating AI video. Please try again.',
     speechNotSupported: 'Speech recognition is not supported in this browser.',
     cityPlaceholder: 'e.g. New York',
-    countryPlaceholder: 'e.g. USA'
+    countryPlaceholder: 'e.g. USA',
+    aiVoiceResponses: 'AI Voice Responses'
   },
   Spanish: {
     appName: 'Foundly',
@@ -185,7 +186,8 @@ export const translations: Record<Language, any> = {
     aiVideoError: 'Error al generar el video por IA. Por favor intenta de nuevo.',
     speechNotSupported: 'El reconocimiento de voz no es compatible con este navegador.',
     cityPlaceholder: 'ej. Nueva York',
-    countryPlaceholder: 'ej. EE. UU.'
+    countryPlaceholder: 'ej. EE. UU.',
+    aiVoiceResponses: 'Respuestas de voz de IA'
   },
   French: {
     appName: 'Foundly',
@@ -278,7 +280,8 @@ export const translations: Record<Language, any> = {
     aiVideoError: 'Erreur lors de la génération de la vidéo par IA. Veuillez réessayer.',
     speechNotSupported: 'La reconnaissance vocale n\'est pas prise en charge par ce navigateur.',
     cityPlaceholder: 'ex. Paris',
-    countryPlaceholder: 'ex. France'
+    countryPlaceholder: 'ex. France',
+    aiVoiceResponses: 'Réponses vocales IA'
   },
   German: {
     appName: 'Foundly',
@@ -371,7 +374,8 @@ export const translations: Record<Language, any> = {
     aiVideoError: 'Fehler beim Erstellen des KI-Videos. Bitte versuchen Sie es erneut.',
     speechNotSupported: 'Spracherkennung wird in diesem Browser nicht unterstützt.',
     cityPlaceholder: 'z.B. Berlin',
-    countryPlaceholder: 'z.B. Deutschland'
+    countryPlaceholder: 'z.B. Deutschland',
+    aiVoiceResponses: 'KI-Sprachantworten'
   },
   Chinese: {
     appName: 'Foundly',
@@ -464,7 +468,8 @@ export const translations: Record<Language, any> = {
     aiVideoError: '生成 AI 视频时出错。请重试。',
     speechNotSupported: '此浏览器不支持语音识别。',
     cityPlaceholder: '例如：北京',
-    countryPlaceholder: '例如：中国'
+    countryPlaceholder: '例如：中国',
+    aiVoiceResponses: 'AI 语音回复'
   },
   Japanese: {
     appName: 'Foundly',
@@ -557,6 +562,7 @@ export const translations: Record<Language, any> = {
     aiVideoError: 'AIビデオの生成中にエラーが発生しました。もう一度お試しください。',
     speechNotSupported: 'このブラウザは音声認識をサポートしていません。',
     cityPlaceholder: '例：東京',
-    countryPlaceholder: '例：日本'
+    countryPlaceholder: '例：日本',
+    aiVoiceResponses: 'AI音声応答'
   }
 };

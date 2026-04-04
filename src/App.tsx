@@ -187,8 +187,6 @@ export default function App() {
   }, [heroCity]);
 
   // AI State
-  const [isAiOpen, setIsAiOpen] = useState(false);
-  const [aiMessage, setAiMessage] = useState('');
   const [aiResponse, setAiResponse] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -218,7 +216,8 @@ export default function App() {
   const [userSettings, setUserSettings] = useState({
     city: '',
     country: '',
-    language: 'English'
+    language: 'English',
+    voiceEnabled: true
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [activeSupportPage, setActiveSupportPage] = useState<string | null>(null);
@@ -251,7 +250,8 @@ export default function App() {
             setUserSettings({
               city: data.city || '',
               country: data.country || '',
-              language: data.language || 'English'
+              language: data.language || 'English',
+              voiceEnabled: data.voiceEnabled !== undefined ? data.voiceEnabled : true
             });
           }
         } catch (error) {
@@ -447,13 +447,69 @@ export default function App() {
     setHeroCity(randomCity);
   }, []);
 
+  // AI Interaction
+  const askAi = async (query: string) => {
+    if (!query.trim()) return;
+
+    setIsAiLoading(true);
+    setAiResponse('');
+    
+    try {
+      const itemsContext = items.map(i => ({
+        title: i.title,
+        location: i.location,
+        description: i.description,
+        status: i.status,
+        foundAt: i.createdAt ? format(i.createdAt.toDate(), 'MMM d, yyyy') : 'Unknown'
+      }));
+
+      const prompt = `You are Foundly AI, a helpful assistant for a lost and found platform. 
+      We handle everything from small essentials like keys and wallets to major items like cars, golf clubs, and shopping bags.
+      Current items in the database: ${JSON.stringify(itemsContext)}
+      
+      User question: "${query}"
+      
+      Help the user find their item or answer their question about the platform. Be concise and empathetic. 
+      If they are looking for something specific, check the database and let them know if we have a match.
+      
+      IMPORTANT: Please respond in ${userSettings.language}.`;
+
+      if (!ai) {
+        setAiResponse("AI service is not configured. Please set the GEMINI_API_KEY environment variable.");
+        return;
+      }
+
+      const result = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+      });
+
+      const text = result.text;
+      if (text) {
+        setAiResponse(text);
+        if (userSettings.voiceEnabled) {
+          await speakText(text);
+        }
+      }
+    } catch (error) {
+      console.error("AI Error:", error);
+      setAiResponse("Sorry, I encountered an error while processing your request.");
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   const handleSearch = () => {
     if (!user) {
       setShowAuthModal(true);
       return;
     }
-    // If logged in, the search is already reactive via searchQuery state
-    // but we can scroll to results for better UX
+    
+    // If the query looks like a question or is long, ask the AI
+    if (searchQuery.length > 10 || searchQuery.includes('?') || searchQuery.toLowerCase().includes('how') || searchQuery.toLowerCase().includes('where')) {
+      askAi(searchQuery);
+    }
+
     const resultsSection = document.getElementById('items-grid');
     if (resultsSection) {
       resultsSection.scrollIntoView({ behavior: 'smooth' });
@@ -503,66 +559,14 @@ export default function App() {
     recognition.onend = () => setIsListening(false);
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
-      if (isAiOpen) {
-        setAiMessage(transcript);
-      } else {
-        setSearchQuery(transcript);
-      }
+      setSearchQuery(transcript);
+      // Automatically trigger AI search for voice input
+      askAi(transcript);
     };
     recognition.start();
   };
 
-  // AI Interaction
-  const handleAiAsk = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!aiMessage.trim()) return;
 
-    setIsAiLoading(true);
-    setAiResponse('');
-    
-    try {
-      const itemsContext = items.map(i => ({
-        title: i.title,
-        location: i.location,
-        description: i.description,
-        status: i.status,
-        foundAt: i.createdAt ? format(i.createdAt.toDate(), 'MMM d, yyyy') : 'Unknown'
-      }));
-
-      const prompt = `You are Foundly AI, a helpful assistant for a lost and found platform. 
-      We handle everything from small essentials like keys and wallets to major items like cars, golf clubs, and shopping bags.
-      Current items in the database: ${JSON.stringify(itemsContext)}
-      
-      User question: "${aiMessage}"
-      
-      Help the user find their item or answer their question about the platform. Be concise and empathetic. 
-      If they are looking for something specific, check the database and let them know if we have a match.
-      
-      IMPORTANT: Please respond in ${userSettings.language}.`;
-
-      if (!ai) {
-        setAiResponse("AI service is not configured. Please set the GEMINI_API_KEY environment variable.");
-        return;
-      }
-
-      const result = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-
-      const text = result.text || "I'm sorry, I couldn't process that request.";
-      setAiResponse(text);
-      setAiMessage('');
-      
-      // Generate TTS
-      await speakText(text);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, 'ai-assistant');
-      setAiResponse("I'm having trouble connecting to my brain right now. Please try again later.");
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
 
   const speakText = async (text: string) => {
     setIsSpeaking(true);
@@ -613,7 +617,8 @@ export default function App() {
           setUserSettings({
             city: data.city || '',
             country: data.country || '',
-            language: data.language || 'English'
+            language: data.language || 'English',
+            voiceEnabled: data.voiceEnabled !== undefined ? data.voiceEnabled : true
           });
         }
       };
@@ -1088,7 +1093,7 @@ export default function App() {
             className="max-w-3xl mx-auto relative group"
           >
             <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-blue-400 rounded-[2rem] blur opacity-30 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
-            <div className="relative flex flex-col md:flex-row items-center bg-white rounded-[2rem] shadow-2xl border border-gray-100 p-3 gap-2">
+            <div className="relative flex flex-col md:flex-row items-center bg-white rounded-[2rem] shadow-2xl border border-gray-100 p-3 gap-2 mb-6">
               <div className="flex flex-1 items-center w-full">
                 <Search className="w-6 h-6 text-gray-400 ml-4" />
                 <input 
@@ -1118,6 +1123,54 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* AI Response Area */}
+            <AnimatePresence>
+              {(isAiLoading || aiResponse) && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="mb-8 bg-white/90 backdrop-blur-xl p-6 rounded-[2rem] shadow-2xl border border-blue-100 text-left relative overflow-hidden"
+                >
+                  <div className="absolute top-0 left-0 w-1 h-full bg-blue-600" />
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-200">
+                      <Sparkles className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-black text-blue-600 uppercase tracking-widest text-xs">{t.aiAssistant}</h3>
+                        {aiResponse && (
+                          <button 
+                            onClick={() => setAiResponse('')}
+                            className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                          >
+                            <X className="w-4 h-4 text-gray-400" />
+                          </button>
+                        )}
+                      </div>
+                      {isAiLoading ? (
+                        <div className="space-y-2">
+                          <div className="h-4 bg-gray-100 rounded-full w-full animate-pulse" />
+                          <div className="h-4 bg-gray-100 rounded-full w-5/6 animate-pulse" />
+                        </div>
+                      ) : (
+                        <p className="text-gray-700 text-lg font-medium leading-relaxed">
+                          {aiResponse}
+                        </p>
+                      )}
+                      {isSpeaking && (
+                        <div className="mt-3 flex items-center gap-2 text-blue-600 text-[10px] font-bold uppercase tracking-widest">
+                          <Volume2 className="w-3 h-3 animate-pulse" />
+                          {t.speaking}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
             
             <div className="mt-8 flex flex-wrap justify-center gap-3">
               <span className="text-[10px] font-black text-white uppercase tracking-[0.3em] mr-2 self-center">{t.trending}:</span>
@@ -1683,99 +1736,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* AI Assistant FAB */}
-      <div className="fixed bottom-8 right-8 z-50 flex flex-col items-end gap-4">
-        <AnimatePresence>
-          {isAiOpen && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="w-80 md:w-96 bg-white rounded-[2rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col"
-            >
-              <div className="p-6 bg-blue-600 text-white flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                    <Sparkles className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-lg">{t.aiAssistant}</h3>
-                    <p className="text-xs text-blue-100">{t.aiSubtitle}</p>
-                  </div>
-                </div>
-                <button onClick={() => setIsAiOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="flex-1 p-6 max-h-96 overflow-y-auto space-y-4 bg-gray-50/50">
-                {aiResponse ? (
-                  <motion.div 
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="bg-white p-4 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-sm text-gray-700 leading-relaxed"
-                  >
-                    {aiResponse}
-                    {isSpeaking && (
-                      <div className="mt-2 flex items-center gap-2 text-blue-600 text-[10px] font-bold uppercase tracking-widest">
-                        <Volume2 className="w-3 h-3 animate-pulse" />
-                        {t.speaking}
-                      </div>
-                    )}
-                  </motion.div>
-                ) : (
-                  <div className="text-center py-8 text-gray-400">
-                    <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p className="text-sm font-medium italic">{t.aiDefaultPrompt}</p>
-                  </div>
-                )}
-                {isAiLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-gray-200 p-3 rounded-2xl rounded-tl-none animate-pulse w-2/3" />
-                  </div>
-                )}
-              </div>
-
-              <form onSubmit={handleAiAsk} className="p-4 bg-white border-t border-gray-100 flex items-center gap-2">
-                <button 
-                  type="button"
-                  onClick={startListening}
-                  className={cn(
-                    "p-3 rounded-xl transition-all",
-                    isListening ? "bg-red-50 text-red-600 animate-pulse" : "bg-gray-50 text-gray-400 hover:bg-gray-100"
-                  )}
-                >
-                  {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                </button>
-                <input 
-                  type="text" 
-                  placeholder={t.aiPlaceholder}
-                  className="flex-1 bg-gray-50 px-4 py-3 rounded-xl outline-none text-sm font-medium"
-                  value={aiMessage}
-                  onChange={(e) => setAiMessage(e.target.value)}
-                />
-                <button 
-                  disabled={!aiMessage.trim() || isAiLoading}
-                  className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50"
-                >
-                  <Send className="w-5 h-5" />
-                </button>
-              </form>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <button 
-          onClick={() => setIsAiOpen(!isAiOpen)}
-          className={cn(
-            "w-16 h-16 rounded-full flex items-center justify-center text-white shadow-2xl transition-all hover:scale-110 active:scale-95 group",
-            isAiOpen ? "bg-gray-900" : "bg-blue-600"
-          )}
-        >
-          {isAiOpen ? <X className="w-8 h-8" /> : <Sparkles className="w-8 h-8 group-hover:rotate-12 transition-transform" />}
-        </button>
-      </div>
-
       {/* Settings Modal */}
       <AnimatePresence>
         {isSettingsOpen && (
@@ -1846,6 +1806,21 @@ export default function App() {
                     <option value="Chinese">Chinese</option>
                     <option value="Japanese">Japanese</option>
                   </select>
+                </div>
+
+                <div className="pt-2">
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer"
+                        checked={userSettings.voiceEnabled}
+                        onChange={(e) => setUserSettings({ ...userSettings, voiceEnabled: e.target.checked })}
+                      />
+                      <div className="w-12 h-6 bg-gray-200 rounded-full peer peer-checked:bg-blue-600 transition-all after:content-[''] after:absolute after:top-1 after:left-1 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-6" />
+                    </div>
+                    <span className="text-sm font-bold text-gray-700 group-hover:text-blue-600 transition-colors">{t.aiVoiceResponses}</span>
+                  </label>
                 </div>
 
                 <div className="pt-4">
