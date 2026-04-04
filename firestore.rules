@@ -55,7 +55,9 @@ service cloud.firestore {
              data.email.size() < 255 &&
              (!('city' in data) || (data.city is string && data.city.size() < 100)) &&
              (!('country' in data) || (data.country is string && data.country.size() < 100)) &&
-             (!('language' in data) || (data.language is string && data.language.size() < 50));
+             (!('language' in data) || (data.language is string && data.language.size() < 50)) &&
+             (!('voiceEnabled' in data) || (data.voiceEnabled is bool)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp));
     }
 
     function isAdmin() {

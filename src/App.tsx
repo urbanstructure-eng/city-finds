@@ -100,11 +100,22 @@ function handleFirestoreError(error: any, operationType: OperationType, path: st
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
     },
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  const errorJson = JSON.stringify(errInfo);
+  console.error('Firestore Error: ', errorJson);
+  throw new Error(errorJson);
 }
 
 // AI Service
