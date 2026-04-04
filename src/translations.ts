@@ -7,7 +7,7 @@ export const translations: Record<Language, any> = {
     signOut: 'Sign Out',
     heroTitle1: 'Lost it?',
     heroTitle2: 'Foundly it.',
-    heroSubtitle: 'From a car to a key, find anything lost in the city. Search through thousands of found items or post something you\'ve found in an urban setting.',
+    heroSubtitle: 'Foundly is an innovative app designed for urban dwellers to help locate lost items, fostering a sense of community. Whether you\'ve misplaced a car or a set of keys, this platform allows users to search through a vast array of found items or to report items they have discovered in the city.',
     searchPlaceholder: "Search for 'silver laptop', 'NYC subway', 'keys'...",
     allItems: 'All Items',
     myPosts: 'My Posts',

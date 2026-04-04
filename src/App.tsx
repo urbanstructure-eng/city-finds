@@ -29,7 +29,8 @@ import {
   Bell,
   Edit2,
   Settings,
-  Globe
+  Globe,
+  ChevronUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -157,6 +158,8 @@ export default function App() {
     language: 'English'
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [activeSupportPage, setActiveSupportPage] = useState<string | null>(null);
+  const seedingStarted = useRef(false);
 
   const t = translations[userSettings.language as Language] || translations.English;
 
@@ -189,7 +192,7 @@ export default function App() {
             });
           }
         } catch (error) {
-          console.error("Error ensuring user doc/fetching settings:", error);
+          handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
         }
       };
       ensureUserDocAndFetchSettings();
@@ -264,8 +267,9 @@ export default function App() {
   useEffect(() => {
     const seedItems = async () => {
       // Only seed if we have no items and the admin is logged in
-      if (loadingItems || items.length > 0 || !user || user.email !== 'urbanstructure@gmail.com') return;
+      if (loadingItems || items.length > 0 || !user || user.email !== 'urbanstructure@gmail.com' || seedingStarted.current) return;
 
+      seedingStarted.current = true;
       const testItems = [
         {
           title: 'Silver MacBook Pro 14"',
@@ -480,7 +484,7 @@ export default function App() {
       // Generate TTS
       await speakText(text);
     } catch (error) {
-      console.error("AI Error:", error);
+      handleFirestoreError(error, OperationType.GET, 'ai-assistant');
       setAiResponse("I'm having trouble connecting to my brain right now. Please try again later.");
     } finally {
       setIsAiLoading(false);
@@ -505,7 +509,7 @@ export default function App() {
       utterance.onend = () => setIsSpeaking(false);
       window.speechSynthesis.speak(utterance);
     } catch (error) {
-      console.error("TTS Error:", error);
+      handleFirestoreError(error, OperationType.GET, 'tts');
       setIsSpeaking(false);
     }
   };
@@ -522,6 +526,25 @@ export default function App() {
         setNewItem({ ...newItem, imageUrl: reader.result as string, imageFile: file });
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleCloseSettings = () => {
+    setIsSettingsOpen(false);
+    // Reset to current user data if not saved
+    if (user) {
+      const fetchSettings = async () => {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          setUserSettings({
+            city: data.city || '',
+            country: data.country || '',
+            language: data.language || 'English'
+          });
+        }
+      };
+      fetchSettings();
     }
   };
 
@@ -645,7 +668,7 @@ export default function App() {
       }
 
       const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-      if (downloadLink) {
+      if (downloadLink && itemId !== 'temp-id') {
         const response = await fetch(downloadLink, {
           method: 'GET',
           headers: {
@@ -708,6 +731,10 @@ export default function App() {
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `items/${id}`);
     }
+  };
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   if (loadingAuth) {
@@ -977,7 +1004,7 @@ export default function App() {
             transition={{ delay: 0.3 }}
             className="max-w-3xl mx-auto relative group"
           >
-            <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-purple-600 rounded-[2rem] blur opacity-30 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
+            <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-blue-400 rounded-[2rem] blur opacity-30 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
             <div className="relative flex flex-col md:flex-row items-center bg-white rounded-[2rem] shadow-2xl border border-gray-100 p-3 gap-2">
               <div className="flex flex-1 items-center w-full">
                 <Search className="w-6 h-6 text-gray-400 ml-4" />
@@ -1010,7 +1037,7 @@ export default function App() {
             </div>
             
             <div className="mt-8 flex flex-wrap justify-center gap-3">
-              <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] mr-2 self-center">{t.trending}:</span>
+              <span className="text-[10px] font-black text-white uppercase tracking-[0.3em] mr-2 self-center">{t.trending}:</span>
               {['Car', 'Keys', 'Golf Clubs', 'Shopping Bag', 'iPhone'].map(tag => (
                 <button 
                   key={tag}
@@ -1018,7 +1045,7 @@ export default function App() {
                     setSearchQuery(tag);
                     handleSearch();
                   }}
-                  className="text-xs font-black uppercase tracking-widest px-5 py-2 bg-white/10 backdrop-blur-md text-white border border-white/10 rounded-full hover:bg-white hover:text-blue-600 transition-all"
+                  className="text-xs font-black uppercase tracking-widest px-5 py-2 bg-white text-gray-900 rounded-full hover:bg-gray-100 transition-all shadow-xl"
                 >
                   {tag}
                 </button>
@@ -1671,10 +1698,10 @@ export default function App() {
         {isSettingsOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsSettingsOpen(false)}
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={() => handleCloseSettings()}
               className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm"
             />
             <motion.div 
@@ -1686,7 +1713,7 @@ export default function App() {
               <div className="px-8 py-6 border-b border-gray-50 flex items-center justify-between">
                 <h2 className="text-2xl font-black">{t.userSettings}</h2>
                 <button 
-                  onClick={() => setIsSettingsOpen(false)}
+                  onClick={handleCloseSettings}
                   className="p-2 hover:bg-gray-100 rounded-full transition-colors"
                 >
                   <X className="w-6 h-6" />
@@ -2023,7 +2050,8 @@ export default function App() {
                           // @ts-ignore
                           await window.aistudio.openSelectKey();
                           setShowKeySelection(false);
-                          handleTikTokPush(newItem, 'temp-id'); // Retry
+                          // We don't retry with temp-id here, the user should just re-submit the form if it failed
+                          // or we could store the pending item ID in a ref
                         }}
                         className="w-full py-4 bg-blue-600 text-white rounded-xl font-black uppercase tracking-widest text-xs hover:bg-blue-700 transition-all"
                       >
@@ -2055,7 +2083,170 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Footer */}
+      {/* Support Pages Modal */}
+      <AnimatePresence>
+        {activeSupportPage && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActiveSupportPage(null)}
+              className="absolute inset-0 bg-gray-900/60 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-3xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              <div className="p-8 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
+                <div>
+                  <h3 className="text-2xl font-black text-gray-900 tracking-tight">{activeSupportPage}</h3>
+                  <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mt-1">Foundly Support</p>
+                </div>
+                <button 
+                  onClick={() => setActiveSupportPage(null)}
+                  className="p-3 hover:bg-gray-100 rounded-2xl text-gray-400 transition-all active:scale-90"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-8 md:p-12 custom-scrollbar">
+                <div className="prose prose-blue max-w-none">
+                  {activeSupportPage === 'Privacy Policy' && (
+                    <div className="space-y-8">
+                      <section>
+                        <h4 className="text-lg font-black text-gray-900 mb-4 uppercase tracking-wider">1. Information We Collect</h4>
+                        <p className="text-gray-600 leading-relaxed font-medium">
+                          We collect information you provide directly to us, such as when you create an account, post an item, or communicate with other users. This includes your name, email address, profile photo, and any location data associated with your posts.
+                        </p>
+                      </section>
+                      <section>
+                        <h4 className="text-lg font-black text-gray-900 mb-4 uppercase tracking-wider">2. How We Use Your Information</h4>
+                        <p className="text-gray-600 leading-relaxed font-medium">
+                          We use the information we collect to facilitate the return of lost items, improve our services, and communicate with you about your account or viral pushes for your found items.
+                        </p>
+                      </section>
+                      <section>
+                        <h4 className="text-lg font-black text-gray-900 mb-4 uppercase tracking-wider">3. Sharing of Information</h4>
+                        <p className="text-gray-600 leading-relaxed font-medium">
+                          Your public profile information and the details of items you post (including location) are visible to other users. We do not sell your personal data to third parties.
+                        </p>
+                      </section>
+                      <section>
+                        <h4 className="text-lg font-black text-gray-900 mb-4 uppercase tracking-wider">4. Data Security</h4>
+                        <p className="text-gray-600 leading-relaxed font-medium">
+                          We take reasonable measures to help protect information about you from loss, theft, misuse, and unauthorized access.
+                        </p>
+                      </section>
+                    </div>
+                  )}
+
+                  {activeSupportPage === 'Terms of Service' && (
+                    <div className="space-y-8">
+                      <section>
+                        <h4 className="text-lg font-black text-gray-900 mb-4 uppercase tracking-wider">1. Acceptance of Terms</h4>
+                        <p className="text-gray-600 leading-relaxed font-medium">
+                          By accessing or using Foundly, you agree to be bound by these Terms of Service and all applicable laws and regulations.
+                        </p>
+                      </section>
+                      <section>
+                        <h4 className="text-lg font-black text-gray-900 mb-4 uppercase tracking-wider">2. User Conduct</h4>
+                        <p className="text-gray-600 leading-relaxed font-medium">
+                          You are responsible for your use of the service and for any content you provide. You agree not to post false information, harass other users, or use the service for any illegal purposes.
+                        </p>
+                      </section>
+                      <section>
+                        <h4 className="text-lg font-black text-gray-900 mb-4 uppercase tracking-wider">3. Item Ownership</h4>
+                        <p className="text-gray-600 leading-relaxed font-medium">
+                          Foundly does not take possession of items. We are a platform to facilitate connections. Users are responsible for verifying ownership before returning items.
+                        </p>
+                      </section>
+                      <section>
+                        <h4 className="text-lg font-black text-gray-900 mb-4 uppercase tracking-wider">4. Limitation of Liability</h4>
+                        <p className="text-gray-600 leading-relaxed font-medium">
+                          Foundly is not liable for any damages arising from your use of the service or from interactions between users.
+                        </p>
+                      </section>
+                    </div>
+                  )}
+
+                  {activeSupportPage === 'Safety Tips' && (
+                    <div className="space-y-8">
+                      <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100 mb-8">
+                        <p className="text-blue-700 font-bold flex items-center gap-2">
+                          <AlertCircle className="w-5 h-5" />
+                          Your safety is our top priority.
+                        </p>
+                      </div>
+                      <section>
+                        <h4 className="text-lg font-black text-gray-900 mb-4 uppercase tracking-wider">1. Meet in Public</h4>
+                        <p className="text-gray-600 leading-relaxed font-medium">
+                          Always arrange to meet in a well-lit, busy public place, such as a coffee shop, police station lobby, or shopping mall.
+                        </p>
+                      </section>
+                      <section>
+                        <h4 className="text-lg font-black text-gray-900 mb-4 uppercase tracking-wider">2. Bring a Friend</h4>
+                        <p className="text-gray-600 leading-relaxed font-medium">
+                          If possible, bring a friend or family member with you to the meeting.
+                        </p>
+                      </section>
+                      <section>
+                        <h4 className="text-lg font-black text-gray-900 mb-4 uppercase tracking-wider">3. Verify Ownership</h4>
+                        <p className="text-gray-600 leading-relaxed font-medium">
+                          Ask the claimant for specific details about the item that weren't in the public post (e.g., serial numbers, unique marks, or what's inside a bag).
+                        </p>
+                      </section>
+                      <section>
+                        <h4 className="text-lg font-black text-gray-900 mb-4 uppercase tracking-wider">4. Trust Your Gut</h4>
+                        <p className="text-gray-600 leading-relaxed font-medium">
+                          If a situation feels uncomfortable or suspicious, leave immediately and report the user to our support team.
+                        </p>
+                      </section>
+                    </div>
+                  )}
+
+                  {activeSupportPage === 'Contact Us' && (
+                    <div className="space-y-8">
+                      <p className="text-gray-600 leading-relaxed font-medium text-lg">
+                        Have questions or need assistance? Our team is here to help you reunite with your belongings.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100">
+                          <h5 className="font-black text-gray-900 uppercase tracking-widest text-xs mb-4">Email Support</h5>
+                          <p className="text-blue-600 font-bold text-lg">support@foundly.app</p>
+                          <p className="text-gray-500 text-sm mt-2">Response within 24 hours</p>
+                        </div>
+                        <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100">
+                          <h5 className="font-black text-gray-900 uppercase tracking-widest text-xs mb-4">Press Inquiries</h5>
+                          <p className="text-blue-600 font-bold text-lg">press@foundly.app</p>
+                          <p className="text-gray-500 text-sm mt-2">For media and viral push requests</p>
+                        </div>
+                      </div>
+                      <div className="p-8 bg-blue-600 rounded-3xl text-white shadow-xl shadow-blue-100">
+                        <h5 className="font-black uppercase tracking-widest text-xs mb-4 opacity-80">Office Location</h5>
+                        <p className="text-xl font-bold">Foundly HQ</p>
+                        <p className="opacity-90 mt-2">123 Community Way, Tech District<br />New York, NY 10001</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="p-8 bg-gray-50 border-t border-gray-100 flex justify-center">
+                <button 
+                  onClick={() => setActiveSupportPage(null)}
+                  className="px-12 py-4 bg-gray-900 text-white font-black uppercase tracking-[0.2em] text-xs rounded-2xl hover:bg-gray-800 transition-all active:scale-95 shadow-xl shadow-gray-200"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       <footer className="bg-white border-t border-gray-100 py-20 mt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
@@ -2085,10 +2276,10 @@ export default function App() {
             <div>
               <h4 className="text-xs font-black text-gray-900 uppercase tracking-[0.2em] mb-6">Support</h4>
               <ul className="space-y-4 text-sm font-bold text-gray-500">
-                <li><a href="#" className="hover:text-blue-600 transition-colors">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-blue-600 transition-colors">Terms of Service</a></li>
-                <li><a href="#" className="hover:text-blue-600 transition-colors">Safety Tips</a></li>
-                <li><a href="#" className="hover:text-blue-600 transition-colors">Contact Us</a></li>
+                <li><button onClick={() => setActiveSupportPage('Privacy Policy')} className="hover:text-blue-600 transition-colors">Privacy Policy</button></li>
+                <li><button onClick={() => setActiveSupportPage('Terms of Service')} className="hover:text-blue-600 transition-colors">Terms of Service</button></li>
+                <li><button onClick={() => setActiveSupportPage('Safety Tips')} className="hover:text-blue-600 transition-colors">Safety Tips</button></li>
+                <li><button onClick={() => setActiveSupportPage('Contact Us')} className="hover:text-blue-600 transition-colors">Contact Us</button></li>
               </ul>
             </div>
           </div>
@@ -2097,9 +2288,18 @@ export default function App() {
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">
               © {new Date().getFullYear()} Foundly. Made with ❤️ for the community.
             </p>
-            <div className="flex gap-6">
+            <div className="flex items-center gap-6">
+              <button 
+                onClick={scrollToTop}
+                className="flex items-center gap-3 group transition-all duration-300 hover:-translate-y-1"
+                title="Back to top"
+              >
+                <span className="text-[11px] font-black uppercase tracking-widest text-blue-600 group-hover:text-blue-700 transition-colors">Back to top</span>
+                <div className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-200 group-hover:bg-blue-700 group-hover:shadow-xl group-hover:shadow-blue-300 transition-all">
+                  <ChevronUp className="w-6 h-6 stroke-[3px]" />
+                </div>
+              </button>
               {/* Social placeholders */}
-              <div className="w-8 h-8 rounded-full bg-gray-50 hover:bg-blue-50 transition-colors cursor-pointer" />
               <div className="w-8 h-8 rounded-full bg-gray-50 hover:bg-blue-50 transition-colors cursor-pointer" />
               <div className="w-8 h-8 rounded-full bg-gray-50 hover:bg-blue-50 transition-colors cursor-pointer" />
             </div>
