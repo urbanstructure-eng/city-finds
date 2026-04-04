@@ -417,17 +417,17 @@ export default function App() {
     const cities = [
       {
         name: 'New York',
-        video: 'https://cdn.pixabay.com/video/2020/03/16/33644-397446467_large.mp4',
+        video: 'https://drive.google.com/uc?id=1dz-wRhj86JqNPn0sfqyX4_Wp6q_ENxie',
         image: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=1920&q=80'
       },
       {
         name: 'Chicago',
-        video: 'https://cdn.pixabay.com/video/2020/02/10/32115-390494498_large.mp4',
+        video: 'https://drive.google.com/uc?id=1dz-wRhj86JqNPn0sfqyX4_Wp6q_ENxie',
         image: 'https://images.unsplash.com/photo-1494522855154-9297ac14b55f?auto=format&fit=crop&w=1920&q=80'
       },
       {
         name: 'Tokyo',
-        video: 'https://cdn.pixabay.com/video/2021/08/04/83901-584061444_large.mp4',
+        video: 'https://drive.google.com/uc?id=1dz-wRhj86JqNPn0sfqyX4_Wp6q_ENxie',
         image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1920&q=80'
       }
     ];
@@ -1022,10 +1022,9 @@ export default function App() {
                 loop 
                 muted 
                 playsInline
-                className="absolute inset-0 w-full h-full object-cover scale-105 animate-subtle-zoom opacity-70"
-              >
-                <source src={heroCity.video} type="video/mp4" />
-              </video>
+                className="absolute inset-0 w-full h-full object-cover scale-105 animate-subtle-zoom opacity-100"
+                src={heroCity.video}
+              />
             </>
           )}
           <div className="absolute inset-0 bg-gradient-to-b from-gray-900/70 via-gray-900/40 to-gray-50" />
