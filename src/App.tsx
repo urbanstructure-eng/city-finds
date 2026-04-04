@@ -435,7 +435,12 @@ export default function App() {
       {
         name: 'Tokyo',
         video: 'https://drive.google.com/uc?id=1ZuEBsxQH7Ogvr7yxeWGveferfL07gnvX&export=media',
-        image: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1920&q=80'
+        image: 'https://images.unsplash.com/photo-1542051841857-5f90071e7989?auto=format&fit=crop&w=1920&q=80'
+      },
+      {
+        name: 'Paris',
+        video: 'https://drive.google.com/uc?id=1ZuEBsxQH7Ogvr7yxeWGveferfL07gnvX&export=media',
+        image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=1920&q=80'
       }
     ];
     const randomCity = cities[Math.floor(Math.random() * cities.length)];
@@ -1055,7 +1060,7 @@ export default function App() {
               className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-500/20 backdrop-blur-md text-blue-100 rounded-full text-xs font-black uppercase tracking-[0.2em] mb-8 border border-white/10"
             >
               <Sparkles className="w-3 h-3" />
-              {t.communityLostFound} • {heroCity?.name || 'Urban'}
+              {t.communityLostFound}
             </motion.div>
             <motion.h2 
               initial={{ opacity: 0, y: 20 }}
