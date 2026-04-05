@@ -1103,7 +1103,7 @@ export default function App() {
             transition={{ delay: 0.3 }}
             className="max-w-3xl mx-auto relative group"
           >
-            <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-blue-400 rounded-[2rem] blur opacity-30 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
+            <div className="absolute -inset-1 bg-white/20 rounded-[2rem] blur opacity-30 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
             <div className="relative flex flex-col md:flex-row items-center bg-white rounded-[2rem] shadow-2xl border border-gray-100 p-3 gap-2 mb-6">
               <div className="flex flex-1 items-center w-full">
                 <Search className="w-6 h-6 text-gray-400 ml-4" />
@@ -1144,14 +1144,14 @@ export default function App() {
                   exit={{ opacity: 0, y: -20 }}
                   className="mb-8 bg-white/90 backdrop-blur-xl p-6 rounded-[2rem] shadow-2xl border border-blue-100 text-left relative overflow-hidden"
                 >
-                  <div className="absolute top-0 left-0 w-1 h-full bg-blue-600" />
+                  <div className="absolute top-0 left-0 w-1 h-full bg-white" />
                   <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-200">
-                      <Sparkles className="w-6 h-6 text-white" />
+                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-gray-200/50">
+                      <Sparkles className="w-6 h-6 text-gray-900" />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-black text-blue-600 uppercase tracking-widest text-xs">{t.aiAssistant}</h3>
+                        <h3 className="font-black text-gray-900 uppercase tracking-widest text-xs">{t.aiAssistant}</h3>
                         {aiResponse && (
                           <button 
                             onClick={() => setAiResponse('')}
@@ -1172,7 +1172,7 @@ export default function App() {
                         </p>
                       )}
                       {isSpeaking && (
-                        <div className="mt-3 flex items-center gap-2 text-blue-600 text-[10px] font-bold uppercase tracking-widest">
+                        <div className="mt-3 flex items-center gap-2 text-gray-900 text-[10px] font-bold uppercase tracking-widest">
                           <Volume2 className="w-3 h-3 animate-pulse" />
                           {t.speaking}
                         </div>
