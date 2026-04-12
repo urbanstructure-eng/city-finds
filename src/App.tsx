@@ -34,28 +34,22 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  collection, 
-  query, 
-  orderBy, 
-  onSnapshot, 
-  addDoc, 
-  serverTimestamp, 
-  where,
-  deleteDoc,
-  doc,
-  updateDoc,
-  getDoc,
-  setDoc,
-  Timestamp
-} from 'firebase/firestore';
-import { useAuthState } from 'react-firebase-hooks/auth';
+  Client, 
+  Account, 
+  Databases, 
+  Storage, 
+  ID, 
+  Query, 
+  Models,
+  OAuthProvider
+} from 'appwrite';
 import { format } from 'date-fns';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { translations, Language } from './translations';
 
-import { auth, db, signIn, logOut } from './firebase';
+import { account, databases, storage, client, APPWRITE_CONFIG } from './appwrite';
 
 // Utility for tailwind classes
 function cn(...inputs: ClassValue[]) {
@@ -69,17 +63,17 @@ interface FoundItem {
   description: string;
   location: string;
   imageUrl?: string;
-  foundAt: Timestamp | Date;
+  foundAt: string;
   finderId: string;
   finderName: string;
   finderEmail: string;
   status: 'found' | 'claimed' | 'lost';
   type: 'found' | 'lost';
   reward?: string;
-  createdAt: Timestamp;
+  createdAt: string;
   claimedBy?: string;
   claimedByName?: string;
-  claimedAt?: Timestamp;
+  claimedAt?: string;
   claimAcknowledged?: boolean;
   claimedVia?: 'standard' | 'tiktok';
 }
@@ -94,27 +88,18 @@ enum OperationType {
   WRITE = 'write',
 }
 
-function handleFirestoreError(error: any, operationType: OperationType, path: string | null) {
+function handleAppwriteError(error: any, operationType: OperationType, path: string | null) {
   const errInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
+      userId: 'appwrite-user',
+      email: 'appwrite-email',
     },
     operationType,
     path
   };
   const errorJson = JSON.stringify(errInfo);
-  console.error('Firestore Error: ', errorJson);
+  console.error('Appwrite Error: ', errorJson);
   throw new Error(errorJson);
 }
 
@@ -178,18 +163,51 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 
 export default function App() {
   console.log("Foundly App Mounting...");
-  const [user, loadingAuth] = useAuthState(auth);
+  const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
   const [items, setItems] = useState<FoundItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddingItem, setIsAddingItem] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'my-posts'>('all');
+  const [filter, setFilter] = useState<'all' | 'my-posts' | 'my-city'>('all');
   const [isScrolled, setIsScrolled] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [selectedItemForMap, setSelectedItemForMap] = useState<FoundItem | null>(null);
   const [selectedItemForDetail, setSelectedItemForDetail] = useState<FoundItem | null>(null);
   const [heroCity, setHeroCity] = useState<{ name: string, video: string, image: string } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Auth State Management
+  useEffect(() => {
+    const checkUser = async () => {
+      try {
+        const session = await account.get();
+        setUser(session);
+      } catch (e) {
+        setUser(null);
+      } finally {
+        setLoadingAuth(false);
+      }
+    };
+    checkUser();
+  }, []);
+
+  const signIn = async () => {
+    try {
+      await account.createOAuth2Session(OAuthProvider.Google, window.location.origin, window.location.origin);
+    } catch (error) {
+      console.error('Sign in failed:', error);
+    }
+  };
+
+  const logOut = async () => {
+    try {
+      await account.deleteSession('current');
+      setUser(null);
+    } catch (error) {
+      console.error('Log out failed:', error);
+    }
+  };
 
   useEffect(() => {
     if (videoRef.current) {
@@ -238,35 +256,45 @@ export default function App() {
 
   // Fetch user settings and ensure user document exists
   useEffect(() => {
-    if (user) {
+    if (user && APPWRITE_CONFIG.usersCollectionId) {
       const ensureUserDocAndFetchSettings = async () => {
         try {
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDoc = await getDoc(userDocRef);
-          
-          if (!userDoc.exists()) {
+          let userDoc;
+          try {
+            userDoc = await databases.getDocument(
+              APPWRITE_CONFIG.databaseId,
+              APPWRITE_CONFIG.usersCollectionId,
+              user.$id
+            );
+          } catch (e) {
             // Create user document if it doesn't exist
-            await setDoc(userDocRef, {
-              uid: user.uid,
-              displayName: user.displayName,
-              email: user.email,
-              photoURL: user.photoURL,
-              createdAt: serverTimestamp(),
-              city: '',
-              country: '',
-              language: 'English'
-            });
-          } else {
-            const data = userDoc.data();
+            userDoc = await databases.createDocument(
+              APPWRITE_CONFIG.databaseId,
+              APPWRITE_CONFIG.usersCollectionId,
+              user.$id,
+              {
+                uid: user.$id,
+                displayName: user.name,
+                email: user.email,
+                photoURL: '', // Appwrite doesn't have a direct photoURL in user object usually
+                createdAt: new Date().toISOString(),
+                city: '',
+                country: '',
+                language: 'English'
+              }
+            );
+          }
+          
+          if (userDoc) {
             setUserSettings({
-              city: data.city || '',
-              country: data.country || '',
-              language: data.language || 'English',
-              voiceEnabled: data.voiceEnabled !== undefined ? data.voiceEnabled : true
+              city: userDoc.city || '',
+              country: userDoc.country || '',
+              language: userDoc.language || 'English',
+              voiceEnabled: userDoc.voiceEnabled !== undefined ? userDoc.voiceEnabled : true
             });
           }
         } catch (error) {
-          handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+          handleAppwriteError(error, OperationType.GET, `users/${user.$id}`);
         }
       };
       ensureUserDocAndFetchSettings();
@@ -277,7 +305,7 @@ export default function App() {
   const notifications = useMemo(() => {
     if (!user) return [];
     return items.filter(item => 
-      item.finderId === user.uid && 
+      item.finderId === user.$id && 
       item.status === 'claimed' && 
       !item.claimAcknowledged
     );
@@ -285,54 +313,91 @@ export default function App() {
 
   const handleAcknowledgeClaim = async (itemId: string) => {
     try {
-      await updateDoc(doc(db, 'items', itemId), {
-        claimAcknowledged: true
-      });
+      await databases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.itemsCollectionId,
+        itemId,
+        {
+          claimAcknowledged: true
+        }
+      );
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `items/${itemId}`);
+      handleAppwriteError(error, OperationType.UPDATE, `items/${itemId}`);
     }
   };
 
   const createTestNotification = async (via: 'standard' | 'tiktok' = 'standard') => {
-    if (!user) return;
+    if (!user || !APPWRITE_CONFIG.itemsCollectionId) return;
     try {
-      await addDoc(collection(db, 'items'), {
-        title: via === 'tiktok' ? 'Viral Item (TikTok)' : 'Test Found Item',
-        description: via === 'tiktok' ? 'This item was found thanks to a viral TikTok video!' : 'This is a test notification item.',
-        location: 'Test Location',
-        finderId: user.uid,
-        finderName: user.displayName || 'Me',
-        finderEmail: user.email || '',
-        status: 'claimed',
-        type: 'found',
-        claimedBy: 'test-user-id',
-        claimedByName: via === 'tiktok' ? '@TikTokUser' : 'Test User',
-        claimedAt: serverTimestamp(),
-        claimAcknowledged: false,
-        claimedVia: via,
-        createdAt: serverTimestamp(),
-        foundAt: new Date(),
-      });
+      await databases.createDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.itemsCollectionId,
+        ID.unique(),
+        {
+          title: via === 'tiktok' ? 'Viral Item (TikTok)' : 'Test Found Item',
+          description: via === 'tiktok' ? 'This item was found thanks to a viral TikTok video!' : 'This is a test notification item.',
+          location: 'Test Location',
+          finderId: user.$id,
+          finderName: user.name || 'Me',
+          finderEmail: user.email || '',
+          status: 'claimed',
+          type: 'found',
+          claimedBy: 'test-user-id',
+          claimedByName: via === 'tiktok' ? '@TikTokUser' : 'Test User',
+          claimedAt: new Date().toISOString(),
+          claimAcknowledged: false,
+          claimedVia: via,
+          createdAt: new Date().toISOString(),
+          foundAt: new Date().toISOString(),
+        }
+      );
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'items');
+      handleAppwriteError(error, OperationType.CREATE, 'items');
     }
   };
 
   // Fetch items
   useEffect(() => {
-    const q = query(collection(db, 'items'), orderBy('createdAt', 'desc'));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedItems = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as FoundItem[];
-      setItems(fetchedItems);
-      setLoadingItems(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'items');
-      setLoadingItems(false);
-    });
+    if (!APPWRITE_CONFIG.itemsCollectionId) return;
+
+    const fetchItems = async () => {
+      try {
+        const response = await databases.listDocuments(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.itemsCollectionId,
+          [Query.orderDesc('createdAt')]
+        );
+        const fetchedItems = response.documents.map(doc => ({
+          id: doc.$id,
+          ...doc,
+          createdAt: doc.createdAt || doc.$createdAt
+        })) as unknown as FoundItem[];
+        setItems(fetchedItems);
+        setLoadingItems(false);
+      } catch (error) {
+        handleAppwriteError(error, OperationType.LIST, 'items');
+        setLoadingItems(false);
+      }
+    };
+
+    fetchItems();
+
+    const unsubscribe = client.subscribe(
+      `databases.${APPWRITE_CONFIG.databaseId}.collections.${APPWRITE_CONFIG.itemsCollectionId}.documents`,
+      (response) => {
+        const payload = response.payload as any;
+        if (response.events.includes('databases.*.collections.*.documents.*.create')) {
+          const newItem = { id: payload.$id, ...payload, createdAt: payload.createdAt || payload.$createdAt } as unknown as FoundItem;
+          setItems(prev => [newItem, ...prev]);
+        } else if (response.events.includes('databases.*.collections.*.documents.*.update')) {
+          const updatedItem = { id: payload.$id, ...payload, createdAt: payload.createdAt || payload.$createdAt } as unknown as FoundItem;
+          setItems(prev => prev.map(item => item.id === updatedItem.id ? updatedItem : item));
+        } else if (response.events.includes('databases.*.collections.*.documents.*.delete')) {
+          const deletedId = payload.$id;
+          setItems(prev => prev.filter(item => item.id !== deletedId));
+        }
+      }
+    );
 
     return () => unsubscribe();
   }, []);
@@ -341,7 +406,7 @@ export default function App() {
   useEffect(() => {
     const seedItems = async () => {
       // Only seed if we have no items and the admin is logged in
-      if (loadingItems || items.length > 0 || !user || user.email !== 'urbanstructure@gmail.com' || seedingStarted.current) return;
+      if (loadingItems || items.length > 0 || !user || user.email !== 'urbanstructure@gmail.com' || seedingStarted.current || !APPWRITE_CONFIG.itemsCollectionId) return;
 
       seedingStarted.current = true;
       const testItems = [
@@ -355,7 +420,7 @@ export default function App() {
           finderEmail: 'team@foundly.app',
           status: 'found',
           type: 'found',
-          createdAt: serverTimestamp(),
+          createdAt: new Date().toISOString(),
         },
         {
           title: 'Abandoned Black SUV (2022 Model)',
@@ -367,7 +432,7 @@ export default function App() {
           finderEmail: 'watch@urban.org',
           status: 'found',
           type: 'found',
-          createdAt: serverTimestamp(),
+          createdAt: new Date().toISOString(),
         },
         {
           title: 'Set of Callaway Golf Clubs',
@@ -379,7 +444,7 @@ export default function App() {
           finderEmail: 'team@foundly.app',
           status: 'found',
           type: 'found',
-          createdAt: serverTimestamp(),
+          createdAt: new Date().toISOString(),
         },
         {
           title: 'Lost Golden Retriever (Max)',
@@ -392,7 +457,7 @@ export default function App() {
           status: 'lost',
           type: 'lost',
           reward: '$500',
-          createdAt: serverTimestamp(),
+          createdAt: new Date().toISOString(),
         },
         {
           title: 'Lost Shopping Bag (Designer Brand)',
@@ -405,13 +470,18 @@ export default function App() {
           status: 'lost',
           type: 'lost',
           reward: '$50',
-          createdAt: serverTimestamp(),
+          createdAt: new Date().toISOString(),
         }
       ];
 
       for (const item of testItems) {
         try {
-          await addDoc(collection(db, 'items'), item);
+          await databases.createDocument(
+            APPWRITE_CONFIG.databaseId,
+            APPWRITE_CONFIG.itemsCollectionId,
+            ID.unique(),
+            item
+          );
         } catch (error) {
           console.error("Error seeding items:", error);
         }
@@ -471,11 +541,12 @@ export default function App() {
         location: i.location,
         description: i.description,
         status: i.status,
-        foundAt: i.createdAt ? format(i.createdAt.toDate(), 'MMM d, yyyy') : 'Unknown'
+        foundAt: i.createdAt ? format(new Date(i.createdAt), 'MMM d, yyyy') : 'Unknown'
       }));
 
       const prompt = `You are Foundly AI, a helpful assistant for a lost and found platform. 
       We handle everything from small essentials like keys and wallets to major items like cars, golf clubs, and shopping bags.
+      The user is currently searching in ${userSettings.city || 'an unknown location'}.
       Current items in the database: ${JSON.stringify(itemsContext)}
       
       User question: "${query}"
@@ -516,8 +587,7 @@ export default function App() {
       return;
     }
     
-    // If the query looks like a question or is long, ask the AI
-    if (searchQuery.length > 10 || searchQuery.includes('?') || searchQuery.toLowerCase().includes('how') || searchQuery.toLowerCase().includes('where')) {
+    if (searchQuery.trim()) {
       askAi(searchQuery);
     }
 
@@ -532,7 +602,12 @@ export default function App() {
     let result = items;
     
     if (filter === 'my-posts' && user) {
-      result = result.filter(item => item.finderId === user.uid);
+      result = result.filter(item => item.finderId === user.$id);
+    }
+
+    if (filter === 'my-city' && userSettings.city) {
+      const city = userSettings.city.toLowerCase();
+      result = result.filter(item => item.location.toLowerCase().includes(city));
     }
 
     if (searchQuery.trim()) {
@@ -573,6 +648,11 @@ export default function App() {
       setSearchQuery(transcript);
       // Automatically trigger AI search for voice input
       askAi(transcript);
+      
+      const resultsSection = document.getElementById('items-grid');
+      if (resultsSection) {
+        resultsSection.scrollIntoView({ behavior: 'smooth' });
+      }
     };
     recognition.start();
   };
@@ -597,7 +677,7 @@ export default function App() {
       utterance.onend = () => setIsSpeaking(false);
       window.speechSynthesis.speak(utterance);
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, 'tts');
+      handleAppwriteError(error, OperationType.GET, 'tts');
       setIsSpeaking(false);
     }
   };
@@ -620,17 +700,22 @@ export default function App() {
   const handleCloseSettings = () => {
     setIsSettingsOpen(false);
     // Reset to current user data if not saved
-    if (user) {
+    if (user && APPWRITE_CONFIG.usersCollectionId) {
       const fetchSettings = async () => {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const data = userDoc.data();
+        try {
+          const userDoc = await databases.getDocument(
+            APPWRITE_CONFIG.databaseId,
+            APPWRITE_CONFIG.usersCollectionId,
+            user.$id
+          );
           setUserSettings({
-            city: data.city || '',
-            country: data.country || '',
-            language: data.language || 'English',
-            voiceEnabled: data.voiceEnabled !== undefined ? data.voiceEnabled : true
+            city: userDoc.city || '',
+            country: userDoc.country || '',
+            language: userDoc.language || 'English',
+            voiceEnabled: userDoc.voiceEnabled !== undefined ? userDoc.voiceEnabled : true
           });
+        } catch (e) {
+          console.error('Failed to fetch settings on close:', e);
         }
       };
       fetchSettings();
@@ -639,17 +724,22 @@ export default function App() {
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !APPWRITE_CONFIG.usersCollectionId) return;
 
     setIsSavingSettings(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        ...userSettings,
-        updatedAt: serverTimestamp()
-      });
+      await databases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.usersCollectionId,
+        user.$id,
+        {
+          ...userSettings,
+          updatedAt: new Date().toISOString()
+        }
+      );
       setIsSettingsOpen(false);
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
+      handleAppwriteError(error, OperationType.UPDATE, `users/${user.$id}`);
     } finally {
       setIsSavingSettings(false);
     }
@@ -672,7 +762,7 @@ export default function App() {
 
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) {
+    if (!user || !APPWRITE_CONFIG.itemsCollectionId) {
       setShowAuthModal(true);
       return;
     }
@@ -680,39 +770,54 @@ export default function App() {
     setSubmitting(true);
     try {
       if (editingItem) {
-        await updateDoc(doc(db, 'items', editingItem.id), {
-          title: newItem.title,
-          description: newItem.description,
-          location: newItem.location,
-          imageUrl: newItem.imageUrl,
-          type: newItem.type,
-          reward: newItem.reward,
-          status: newItem.type === 'found' ? 'found' : 'lost',
-          updatedAt: serverTimestamp(),
-        });
+        await databases.updateDocument(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.itemsCollectionId,
+          editingItem.id,
+          {
+            title: newItem.title,
+            description: newItem.description,
+            location: newItem.location,
+            imageUrl: newItem.imageUrl,
+            type: newItem.type,
+            reward: newItem.reward,
+            status: newItem.type === 'found' ? 'found' : 'lost',
+            updatedAt: new Date().toISOString(),
+          }
+        );
         setIsAddingItem(false);
         setEditingItem(null);
         setNewItem({ title: '', description: '', location: '', imageUrl: '', type: 'found', reward: '', pushToTikTok: false, imageFile: null });
       } else {
-        const docRef = await addDoc(collection(db, 'items'), {
-          ...newItem,
-          finderId: user.uid,
-          finderName: user.displayName || 'Anonymous',
-          finderEmail: user.email || '',
-          status: newItem.type === 'found' ? 'found' : 'lost',
-          foundAt: new Date(),
-          createdAt: serverTimestamp(),
-        });
+        const doc = await databases.createDocument(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.itemsCollectionId,
+          ID.unique(),
+          {
+            title: newItem.title,
+            description: newItem.description,
+            location: newItem.location,
+            imageUrl: newItem.imageUrl,
+            type: newItem.type,
+            reward: newItem.reward,
+            finderId: user.$id,
+            finderName: user.name || 'Anonymous',
+            finderEmail: user.email || '',
+            status: newItem.type === 'found' ? 'found' : 'lost',
+            foundAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+          }
+        );
 
         if (newItem.pushToTikTok) {
-          await handleTikTokPush(newItem, docRef.id);
+          await handleTikTokPush(newItem, doc.$id);
         } else {
           setIsAddingItem(false);
           setNewItem({ title: '', description: '', location: '', imageUrl: '', type: 'found', reward: '', pushToTikTok: false, imageFile: null });
         }
       }
     } catch (error) {
-      handleFirestoreError(error, editingItem ? OperationType.UPDATE : OperationType.CREATE, editingItem ? `items/${editingItem.id}` : 'items');
+      handleAppwriteError(error, editingItem ? OperationType.UPDATE : OperationType.CREATE, editingItem ? `items/${editingItem.id}` : 'items');
     } finally {
       setSubmitting(false);
     }
@@ -768,11 +873,16 @@ export default function App() {
         const url = URL.createObjectURL(blob);
         setGeneratedVideoUrl(url);
         
-        // Update Firestore with video URL
-        await updateDoc(doc(db, 'items', itemId), {
-          tiktokVideoUrl: url,
-          pushedToTikTok: true
-        });
+        // Update Appwrite with video URL
+        await databases.updateDocument(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.itemsCollectionId,
+          itemId,
+          {
+            tiktokVideoUrl: url,
+            pushedToTikTok: true
+          }
+        );
       }
 
       setVideoGenerationProgress('Video posted to @FoundlyOfficial TikTok!');
@@ -795,30 +905,39 @@ export default function App() {
   };
 
   const confirmDelete = async () => {
-    if (!deletingItem) return;
+    if (!deletingItem || !APPWRITE_CONFIG.itemsCollectionId) return;
     try {
-      await deleteDoc(doc(db, 'items', deletingItem));
+      await databases.deleteDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.itemsCollectionId,
+        deletingItem
+      );
       setDeletingItem(null);
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `items/${deletingItem}`);
+      handleAppwriteError(error, OperationType.DELETE, `items/${deletingItem}`);
     }
   };
 
   const handleMarkAsClaimed = async (id: string) => {
-    if (!user) {
+    if (!user || !APPWRITE_CONFIG.itemsCollectionId) {
       setShowAuthModal(true);
       return;
     }
     try {
-      await updateDoc(doc(db, 'items', id), { 
-        status: 'claimed',
-        claimedBy: user.uid,
-        claimedByName: user.displayName,
-        claimedAt: serverTimestamp()
-      });
+      await databases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.itemsCollectionId,
+        id,
+        { 
+          status: 'claimed',
+          claimedBy: user.$id,
+          claimedByName: user.name,
+          claimedAt: new Date().toISOString()
+        }
+      );
       setSelectedItemForMap(null);
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `items/${id}`);
+      handleAppwriteError(error, OperationType.UPDATE, `items/${id}`);
     }
   };
 
@@ -959,7 +1078,7 @@ export default function App() {
                                       )}
                                     </p>
                                     <p className="text-[10px] text-gray-400 mt-1 font-medium">
-                                      {item.claimedAt ? format(item.claimedAt.toDate(), 'MMM d, h:mm a') : t.justNow}
+                                      {item.claimedAt ? format(new Date(item.claimedAt), 'MMM d, h:mm a') : t.justNow}
                                     </p>
                                     <button 
                                       onClick={() => handleAcknowledgeClaim(item.id)}
@@ -988,7 +1107,7 @@ export default function App() {
             {user ? (
               <div className="flex items-center gap-3">
                 <div className="hidden sm:block text-right">
-                  <p className="text-sm font-bold text-gray-900">{user.displayName}</p>
+                  <p className="text-sm font-bold text-gray-900">{user.name}</p>
                   <p className="text-xs text-gray-500">{user.email}</p>
                 </div>
                 <button 
@@ -1012,7 +1131,7 @@ export default function App() {
                   <LogOut className="w-5 h-5" />
                 </button>
                 <img 
-                  src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} 
+                  src={`https://ui-avatars.com/api/?name=${user.name}`} 
                   alt="Profile" 
                   className="w-10 h-10 rounded-full border-2 border-white shadow-sm"
                   referrerPolicy="no-referrer"
@@ -1103,16 +1222,35 @@ export default function App() {
             transition={{ delay: 0.3 }}
             className="max-w-3xl mx-auto relative group"
           >
+            <div className="flex justify-center mb-6">
+              <motion.button 
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setIsSettingsOpen(true)}
+                className="flex items-center gap-3 px-6 py-3 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 text-white hover:bg-white/20 transition-all group shadow-2xl"
+              >
+                <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center group-hover:bg-blue-500/40 transition-colors">
+                  <MapPin className="w-4 h-4 text-blue-400 group-hover:animate-bounce" />
+                </div>
+                <div className="text-left">
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-blue-300 mb-0.5">{t.searchingIn}</p>
+                  <p className="text-xs font-black uppercase tracking-widest">
+                    {userSettings.city || t.setLocation}
+                  </p>
+                </div>
+              </motion.button>
+            </div>
             <div className="absolute -inset-1 bg-white/20 rounded-[2rem] blur opacity-30 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
             <div className="relative flex flex-col md:flex-row items-center bg-white rounded-[2rem] shadow-2xl border border-gray-100 p-3 gap-2 mb-6">
               <div className="flex flex-1 items-center w-full">
                 <Search className="w-6 h-6 text-gray-400 ml-4" />
                 <input 
                   type="text" 
-                  placeholder={t.searchPlaceholder}
+                  placeholder={userSettings.city ? `${t.searchPlaceholder.replace('...', '')} ${t.foundIn.toLowerCase()} ${userSettings.city}...` : t.searchPlaceholder}
                   className="flex-1 px-4 py-5 text-xl bg-transparent outline-none text-gray-900 placeholder:text-gray-400 font-medium"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 />
               </div>
               <div className="flex items-center gap-2 w-full md:w-auto border-t md:border-t-0 md:border-l border-gray-100 pt-2 md:pt-0 md:pl-2">
@@ -1128,8 +1266,9 @@ export default function App() {
                 </button>
                 <button 
                   onClick={handleSearch}
-                  className="flex-1 md:flex-none px-10 py-5 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 active:scale-95"
+                  className="flex-1 md:flex-none px-10 py-5 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 active:scale-95 flex items-center justify-center gap-2"
                 >
+                  <Sparkles className="w-4 h-4" />
                   {t.searchPlaceholder.split(' ')[0]}
                 </button>
               </div>
@@ -1226,6 +1365,17 @@ export default function App() {
                 {t.myPosts}
               </button>
             )}
+            {user && userSettings.city && (
+              <button 
+                onClick={() => setFilter('my-city')}
+                className={cn(
+                  "px-6 py-2 rounded-lg font-bold text-sm transition-all",
+                  filter === 'my-city' ? "bg-gray-900 text-white shadow-md" : "text-gray-500 hover:bg-gray-50"
+                )}
+              >
+                {t.onlyInMyCity}
+              </button>
+            )}
           </div>
           
           <button 
@@ -1284,7 +1434,7 @@ export default function App() {
                         </span>
                       )}
                     </div>
-                    {user && item.finderId === user.uid && (
+                    {user && item.finderId === user.$id && (
                       <div className="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={(e) => {
@@ -1546,7 +1696,7 @@ export default function App() {
                     <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center text-purple-600">
                       <Calendar className="w-4 h-4" />
                     </div>
-                    <span className="font-bold">{selectedItemForDetail.createdAt ? format(selectedItemForDetail.createdAt.toDate(), 'MMM d, yyyy') : t.justNow}</span>
+                    <span className="font-bold">{selectedItemForDetail.createdAt ? format(new Date(selectedItemForDetail.createdAt), 'MMM d, yyyy') : t.justNow}</span>
                   </div>
                 </div>
 
@@ -1570,7 +1720,7 @@ export default function App() {
                       </div>
                     </div>
                     
-                    {user?.uid === selectedItemForDetail.finderId && (
+                    {user?.$id === selectedItemForDetail.finderId && (
                       <div className="flex items-center gap-2">
                         <button 
                           onClick={() => {
@@ -1598,7 +1748,7 @@ export default function App() {
 
                   {selectedItemForDetail.type === 'found' ? (
                     selectedItemForDetail.status === 'found' ? (
-                      user?.uid !== selectedItemForDetail.finderId && (
+                      user?.$id !== selectedItemForDetail.finderId && (
                         <button 
                           onClick={() => {
                             handleMarkAsClaimed(selectedItemForDetail.id);
@@ -1617,7 +1767,7 @@ export default function App() {
                       </div>
                     )
                   ) : (
-                    user?.uid !== selectedItemForDetail.finderId && (
+                    user?.$id !== selectedItemForDetail.finderId && (
                       <button 
                         onClick={() => {
                           window.location.href = `mailto:${selectedItemForDetail.finderEmail}?subject=Found your item: ${selectedItemForDetail.title}`;
@@ -1656,13 +1806,13 @@ export default function App() {
               <div className="flex-1 relative bg-gray-100">
                 {import.meta.env.VITE_GOOGLE_MAPS_API_KEY ? (
                   <a 
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedItemForMap.location + ' New York')}`}
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedItemForMap.location + (userSettings.city ? `, ${userSettings.city}` : ''))}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="block w-full h-full relative group cursor-pointer"
                   >
                     <img 
-                      src={`https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(selectedItemForMap.location + ' New York')}&zoom=15&size=800x600&scale=2&maptype=roadmap&markers=color:red%7C${encodeURIComponent(selectedItemForMap.location + ' New York')}&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}`}
+                      src={`https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(selectedItemForMap.location + (userSettings.city ? `, ${userSettings.city}` : ''))}&zoom=15&size=800x600&scale=2&maptype=roadmap&markers=color:red%7C${encodeURIComponent(selectedItemForMap.location + (userSettings.city ? `, ${userSettings.city}` : ''))}&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}`}
                       alt="Location Map"
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                       referrerPolicy="no-referrer"
@@ -1716,13 +1866,13 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-3 text-sm text-gray-500">
                     <Calendar className="w-4 h-4 text-purple-600" />
-                    <span className="font-bold">{format(selectedItemForMap.createdAt.toDate(), 'MMM d, yyyy')}</span>
+                    <span className="font-bold">{format(new Date(selectedItemForMap.createdAt), 'MMM d, yyyy')}</span>
                   </div>
                 </div>
 
                 <div className="mt-auto">
                   {selectedItemForMap.status === 'found' ? (
-                    user?.uid !== selectedItemForMap.finderId && (
+                    user?.$id !== selectedItemForMap.finderId && (
                       <button 
                         onClick={() => handleMarkAsClaimed(selectedItemForMap.id)}
                         className="w-full py-4 bg-green-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-green-700 transition-all shadow-xl shadow-green-100 active:scale-95 flex items-center justify-center gap-2"
